@@ -1,0 +1,174 @@
+<html>
+<head>
+<title>Ant Media Server WebRTC Peer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="UTF-8">
+<link rel="stylesheet"
+	href="css/external/bootstrap4/bootstrap.min.css"
+	>
+<script src="js/external/adapter-latest.js"></script>
+<link rel="stylesheet" href="css/common.css" />
+<link rel="stylesheet" href="css/chessboard-1.0.0.min.css">
+<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+<script src="js/chessboard-1.0.0.min.js"></script>
+</head>
+<style>
+	body {
+  		background-image: url("img/chess-back.png");
+	}
+
+	.video-mask{
+    	width: 350px;
+    	border-radius: 10px; 
+    	overflow: hidden; 
+	}
+</style>
+<body>
+
+	<div class="container" style="padding: 40px 0px; text-align: center">
+		 <div class="header clearfix">
+			<div class="row">
+				<h3 class="col" style="color: #2CC7DB">WebRTC Peer to Peer Chess</h3>
+			</div>
+		</div>
+			
+		<div class="input-group col-sm-12 ">
+			<div class="d-flex  col-sm-3 align-items-center">
+					<video id="localVideo" class="video-mask" autoplay muted playsinline width="240"></video>
+			</div>
+			<div class="container col-sm-6">
+				<div id="chessBoard" style="width: 400px; margin:0 auto"></div>
+			</div>
+			<div class="d-flex  col-sm-3 align-items-center">
+				<video id="remoteVideo" class="video-mask" autoplay contols playsinline width="240"></video>
+			</div>
+		</div>
+		<br />
+		<div class="form-group offset-sm-3 col-sm-6">
+			<textarea class="form-control" id="dataMessagesTextarea" style="font-size:10px" rows="12"></textarea>
+			<div class="form-row">
+				<div class="form-group col-sm-10">
+					<input type="text" class="form-control" id="dataTextbox" placeholder="Write your message to send">
+				</div>
+				<div class="form-group col-sm-2">
+				<button type="button" id="send" class="btn btn-primary">Send</button>
+				</div>
+			</div>
+		</div>
+		
+	</div>
+</body>
+<script type="module">
+	import {WebRTCAdaptor} from "./js/webrtc_adaptor.js"
+    import {getUrlParameter} from "./js/fetch.stream.js" 
+
+	var send = document.getElementById("send");
+	send.addEventListener("click", sendData, false);
+
+	var roomId = getUrlParameter("room");
+
+	var pc_config =
+	{
+		'iceServers' : [ {
+			'urls' : 'stun:stun1.l.google.com:19302'
+		} ]
+	};
+	
+
+	var sdpConstraints = 
+	{
+		OfferToReceiveAudio : true,
+		OfferToReceiveVideo : true
+			
+	};
+	var mediaConstraints = {
+	          video: true,
+	          audio: true
+	        };
+	
+	var appName = location.pathname.substring(0, location.pathname.lastIndexOf("/")+1);
+	var websocketURL = "ws://" + location.hostname + ":5080" + appName + "websocket";
+	
+	if (location.protocol.startsWith("https")) {
+		websocketURL = "wss://" + location.hostname + ":5443" + appName + "websocket";
+	}
+	
+	var webRTCAdaptor = new WebRTCAdaptor({
+		  websocket_url: websocketURL,
+		  mediaConstraints: mediaConstraints,
+		  peerconnection_config: pc_config,
+		  sdp_constraints: sdpConstraints,
+		  localVideoId: "localVideo",
+		  remoteVideoId: "remoteVideo",
+		  debug: true,
+		  callback: function(info, obj) {
+			  if (info == "initialized") {
+				  console.log("initialized");
+				  webRTCAdaptor.join(roomId);		  
+			  }
+			  else if (info == "joined") {
+				  //joined the stream
+				  console.log("joined");
+			  }
+			  else if (info == "leaved") {
+				  //leaved the stream
+				  console.log("leaved");
+			  }
+			  else if (info == "data_received") {
+				handleMessage(obj.data);
+			  }
+		  },
+		  callbackError: function(error) {
+			  console.log("error callback: " + error);
+			  alert(error);
+		  }
+	  });
+
+	  function sendData() {
+		
+				var msg = $("#dataTextbox").val();
+				sendTextMessage(msg);
+				$("#dataMessagesTextarea").append("Sent: " + msg + "\r\n");
+				$("#dataTextbox").val("");
+
+	}
+
+	function sendTextMessage(msg) {
+			var notEvent = { type:"Message", data:msg };
+			webRTCAdaptor.sendData(roomId, JSON.stringify(notEvent));	
+	}
+
+	function sendBoardMessage(msg) {
+			var notEvent = { type:"Board", data:msg };
+			webRTCAdaptor.sendData(roomId, JSON.stringify(notEvent));	
+	}
+
+	function handleMessage(message) {
+		var msg = JSON.parse(message);
+		var type = msg.type;
+		if(type == "Message") {
+			$("#dataMessagesTextarea").append("Received: " + msg.data + "\r\n");
+		} else if (type == "Board"){
+			chessBoard.position(msg.data);
+		} 
+	}
+
+
+function onChange (oldPos, newPos) {
+  sendBoardMessage(Chessboard.objToFen(newPos));
+}
+
+var config = {
+  draggable: true,
+  dropOffBoard: 'snapback', // this is the default
+  position: 'start',
+  onChange: onChange
+
+}
+  var chessBoard = Chessboard('chessBoard', config);
+
+chessBoard.start;
+	
+
+</script>
+</html>
